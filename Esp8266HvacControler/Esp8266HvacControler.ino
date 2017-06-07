@@ -84,6 +84,7 @@ typedef enum HvacProfileMode {
 OneWire oneWire(ONE_WIRE_BUS); 
 DallasTemperature sensors(&oneWire);
 
+
 //  Hardware Connection
 //  IR LED SIGNAL => ESP/GPIO_4
 //  DHT SIGNAL => ESP/GPIO_5
@@ -130,7 +131,7 @@ struct HvacPayloadSTR
 }  ;
 
 
-HvacPayloadSTR LastHvacPayloadSTR;
+
 
 
 void sendHvacMitsubishi(
@@ -141,6 +142,7 @@ void sendHvacMitsubishi(
     int                     OFF                  // Example false
   );
 
+struct HvacPayloadSTR LastHvacPayloadSTR;
 
 void setup() {
   // put your setup code here, to run once:
@@ -183,12 +185,8 @@ if (currentMillis - previousMillis >= interval) {
 /********************************************************************/
  Serial.print("Temperature is: "); 
  float temp = sensors.getTempCByIndex(0);
- Serial.print(temp); // Why "byIndex"?  
-   // You can have more than one DS18B20 on the same bus.  
-   // 0 refers to the first IC on the wire 
-   //delay(1000); 
-
-   SendMessage(temp);
+ Serial.println(temp); 
+   SendMessage(temp,"temperature");
 }
 }
 
@@ -206,16 +204,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Payload=");
   Serial.println(Payload);
  HvacPayload datax = Decodejson((char*)Payload.c_str());
- //HvacMode,HvacFanMode,HvacVanneMode
+ 
   sendHvacMitsubishi(datax.HVAC_Mode, datax.HVAC_Temp, datax.HVAC_FanMode, datax.HVAC_VanneMode, datax.OFF);
-   /*;
-    *   HvacMode  HVAC_Mode;
-  int HVAC_Temp;
-  HvacFanMode  HVAC_FanMode;
-  HvacVanneMode  HVAC_VanneMode;
-  int OFF;
-    */
-    
+     
   
 }
 
@@ -242,11 +233,11 @@ Serial.print("Status=");
   if (root["Status"]==true)
   {
     Serial.println("Sending Status Message");
-    SendMessage(LastHvacPayloadSTR);
+    SendMessage(LastHvacPayloadSTR,"Status");
   }else
 {
   Serial.println("NO Status Message received");
-}
+
   
     //HvacMode,HvacFanMode,HvacVanneMode
   String HVAC_Mode =root["Payload"]["HVAC_Mode"];
@@ -274,7 +265,9 @@ HvacPayload Hvacdata;
    //get_HvacMode(HVAC_Mode);
     Hvacdata = {get_HvacMode(HVAC_Mode),HVAC_Temp,get_HvacFanMode(HVAC_FanMode),get_HvacVanneMode(HVAC_VanneMode),OFF};
     LastHvacPayloadSTR={HVAC_Mode,HVAC_Temp,HVAC_FanMode,HVAC_VanneMode,OFF};
+
     return Hvacdata;
+    }
    
     
  }
@@ -285,7 +278,7 @@ HvacPayload Hvacdata;
 
 
 
-void SendMessage(HvacPayloadSTR Message)
+void SendMessage(HvacPayloadSTR Message, char* Topic)
 {
   StaticJsonBuffer<200> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
@@ -294,20 +287,46 @@ void SendMessage(HvacPayloadSTR Message)
   root["HVAC_FanMode"] = Message.HVAC_FanMode;
   root["HVAC_VanneMode"] = Message.HVAC_VanneMode;
   root["OFF"] = Message.OFF;
+   root["TOPIC"] = Topic;
   char buffer[256];
         root.printTo(buffer, sizeof(buffer));
   client.publish(root_topicOut,buffer );
 }
 
-
-void SendMessage(float Message)
+String ChangetoChar(float value)
 {
-   char buf[10];
-dtostrf(Message, 0,3, buf);
-  client.publish(root_topicOut, buf);
+  char buf[10];
+dtostrf(value, 0,3, buf);
+  return buf;
+}
+
+String MakeJsonReturn(String Message, char* Topic)
+{
+   StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["TOPIC"] = Topic;
+  root["Message"] = Message;
+
+  char buffer[256];
+        root.printTo(buffer, sizeof(buffer));
+        return buffer;
 }
 
 
+void SendMessage(float Message, char* topic )
+{
+  String retval = MakeJsonReturn (ChangetoChar(Message).c_str(), topic);
+  client.publish(root_topicOut, retval.c_str());
+}
+
+
+
+
+void SendMessage(char* Message, char* Topic )
+{
+   String retval =  MakeJsonReturn(Message, Topic) ;
+  client.publish(root_topicOut,retval.c_str());
+}
 
 void SendMessage(char* Message)
 {
