@@ -49,9 +49,17 @@ void mountfs()
     if (client.connect("ESP8266Client")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish(root_topicOut, "Connected!");
+      if (useHomekit)
+      {
+        client.subscribe(Homebridge_get);
+        //client.publish(Homebridge_get, "Connected!");
+      }else
+      {
+        client.subscribe(root_topicIn);
+       client.publish(root_topicOut, "Connected!");
+      }
       // ... and resubscribe
-      client.subscribe(root_topicIn);
+      
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());

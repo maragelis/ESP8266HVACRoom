@@ -76,6 +76,43 @@ HvacMode get_HvacMode(String HVAC_Modestr)
     
 }
 
+HvacMode getHK_HvacMode(int HVAC_Mode)
+{
+    if (HVAC_Mode == 1)
+           { return HVAC_HOT;}
+
+         else  if (HVAC_Mode == 2)
+           { return HVAC_COLD;}
+            
+       else if (HVAC_Mode == 3)
+           {  return HVAC_AUTO;           }
+
+        
+           return HVAC_AUTO;  
+    
+}
+
+int getHK_HvacModevalue(HvacMode mode, int OFF)
+{
+  if (OFF == 0)
+  {
+    return 0;
+  }
+  else if (mode == HVAC_HOT)
+  { 
+    return 1;
+  }
+  else  if (mode == HVAC_COLD)
+  { 
+    return 2;
+  }
+  else if (mode == HVAC_AUTO)
+  {  
+    return 3;
+  }
+    
+}
+
 
 //HvacMode,HvacFanMode,HvacVanneMode
 

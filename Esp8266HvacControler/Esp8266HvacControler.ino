@@ -79,8 +79,9 @@ typedef enum HvacProfileMode {
 #define HVAC_MISTUBISHI_ZERO_SPACE  420
 #define HVAC_MITSUBISHI_RPT_MARK    440
 #define HVAC_MITSUBISHI_RPT_SPACE   17100 // Above original iremote limit
-
+ 
 #define ONE_WIRE_BUS 5
+
 OneWire oneWire(ONE_WIRE_BUS); 
 DallasTemperature sensors(&oneWire);
 
@@ -90,17 +91,26 @@ DallasTemperature sensors(&oneWire);
 //  DHT SIGNAL => ESP/GPIO_5
 // #include <ESP8266WiFi.h>
 
+const bool useHomekit = true;
 const char* ssid = "SSID";
 const char* password = "*********";
  char* mqtt_server = "192.168.2.230";
 char*  mqtt_port = "1883";
  char* root_topicOut = "HvacAthanasia/Out";
 const char* root_topicIn = "HvacAthanasia/In";
+char* Homebridge_set= "homebridge/to/set";
+const char* Homebridge_get = "homebridge/from/get";
+char* Homebridge_add = "homebridge/to/add";
 
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 bool shouldSaveConfig = false;
+int chipid = ESP.getChipId();
+const String HomeKitName = "MITSUBISHI_" + chipid ;
+
+
+String DeviceCreate = "{\"name\":\"" + HomeKitName + "\",\"service_name\":\"" + HomeKitName+ "\",\"service\":\"Thermostat\" }";
 
 
 
@@ -131,9 +141,6 @@ struct HvacPayloadSTR
 }  ;
 
 
-
-
-
 void sendHvacMitsubishi(
     HvacMode                HVAC_Mode,           // Example HVAC_HOT  HvacMitsubishiMode
     int                     HVAC_Temp,           // Example 21  (°c)
@@ -143,6 +150,9 @@ void sendHvacMitsubishi(
   );
 
 struct HvacPayloadSTR LastHvacPayloadSTR;
+struct HvacPayload Hvacdata;
+
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -161,7 +171,12 @@ setup_wifi();
   pinMode(IRpin, OUTPUT);
    Decodejson("1");
 sensors.begin(); 
+SendMessage((char*)DeviceCreate.c_str(), Homebridge_add);
+delay(5000);
+InitHavcData();
+sendHvacMitsubishiData();
 }
+
 
 void loop() {
   
@@ -186,11 +201,20 @@ if (currentMillis - previousMillis >= interval) {
  Serial.print("Temperature is: "); 
  float temp = sensors.getTempCByIndex(0);
  Serial.println(temp); 
+
    SendMessage(temp,"temperature");
 }
 }
 
+void InitHavcData()
+{
+  Hvacdata={HVAC_AUTO, 28, FAN_SPEED_AUTO, VANNE_AUTO, 1 };
+}
 
+void sendHvacMitsubishiData()
+{
+ sendHvacMitsubishi(Hvacdata.HVAC_Mode, Hvacdata.HVAC_Temp, Hvacdata.HVAC_FanMode, Hvacdata.HVAC_VanneMode, Hvacdata.OFF);
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
@@ -203,11 +227,51 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.print("Payload=");
   Serial.println(Payload);
- HvacPayload datax = Decodejson((char*)Payload.c_str());
+
+  if (useHomekit)
+  {
+    DecodejsonHomekit((char*)Payload.c_str());
+    sendHvacMitsubishiData();
+    
+  }else
+  {
+    HvacPayload datax = Decodejson((char*)Payload.c_str());
+    sendHvacMitsubishi(datax.HVAC_Mode, datax.HVAC_Temp, datax.HVAC_FanMode, datax.HVAC_VanneMode, datax.OFF);
+  }
+
  
-  sendHvacMitsubishi(datax.HVAC_Mode, datax.HVAC_Temp, datax.HVAC_FanMode, datax.HVAC_VanneMode, datax.OFF);
-     
   
+}
+
+struct HvacPayload DecodejsonHomekit(char* Payload) 
+{
+DynamicJsonBuffer jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(Payload);
+   Serial.print("parseObject=");
+   Serial.println(root.success());
+  if (!root.success()) {
+  }else
+  {
+    if (root["Characteristic"] == "TargetHeatingCoolingState")
+    {
+      if (root["value"] =="0")
+      {
+        Hvacdata.OFF = 1;
+        SendHomeKit();
+      }else
+      {
+        Hvacdata.OFF = 0;
+        Hvacdata.HVAC_Mode = getHK_HvacMode(root["value"]);
+        SendHomeKit();
+      }
+    }
+    if (root["Characteristic"] == "TargetTemperature")
+    {
+      Hvacdata.HVAC_Temp == root["value"];
+      
+
+    }
+  }
 }
 
 
@@ -276,7 +340,35 @@ HvacPayload Hvacdata;
   return data;
 }
 
+void SendHomeKit()
+{
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  
+  root["name"] = HomeKitName;
+  root["service_name"] = HomeKitName;
+  root["characteristic"] = "CurrentHeatingCoolingState";
+  root["value"] = getHK_HvacModevalue(Hvacdata.HVAC_Mode, Hvacdata.OFF );
+  
+  char buffer[256];
+        root.printTo(buffer, sizeof(buffer));
+  client.publish(Homebridge_set,buffer );
+}
 
+void SendHomeKitTemp()
+{
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  
+  root["name"] = HomeKitName;
+  root["service_name"] = HomeKitName;
+  root["characteristic"] = "CurrentTemperature";
+  root["value"] = Hvacdata.HVAC_Temp;
+  
+  char buffer[256];
+        root.printTo(buffer, sizeof(buffer));
+  client.publish(Homebridge_set,buffer );
+}
 
 void SendMessage(HvacPayloadSTR Message, char* Topic)
 {
@@ -333,6 +425,8 @@ void SendMessage(char* Message)
   
   client.publish(root_topicOut, Message);
 }
+
+
 
 
 
